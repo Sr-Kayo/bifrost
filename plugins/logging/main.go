@@ -270,7 +270,8 @@ func (p *LoggerPlugin) recordBatchJobLifecycle(entry *logstore.Log, result *sche
 	if !logstore.IsTerminalBatchProviderStatus(job.ProviderStatus) {
 		next := now.Add(time.Minute)
 		job.NextCheckAt = &next
-	} else if job.ProviderStatus == string(schemas.BatchStatusCompleted) {
+	} else if job.ProviderStatus == string(schemas.BatchStatusCompleted) ||
+		job.ProviderStatus == string(schemas.BatchStatusEnded) {
 		job.NextCheckAt = &now
 	}
 	if err := p.store.UpsertBatchJob(p.ctx, job); err != nil {
@@ -279,7 +280,7 @@ func (p *LoggerPlugin) recordBatchJobLifecycle(entry *logstore.Log, result *sche
 }
 
 func addBatchRequestCountsToLog(entry *logstore.Log, counts schemas.BatchRequestCounts) {
-	if entry == nil || batchaccounting.IsZeroBatchRequestCounts(counts) {
+	if entry == nil || counts.IsZero() {
 		return
 	}
 	if entry.MetadataParsed == nil {
@@ -659,7 +660,6 @@ func (p *LoggerPlugin) StartBatchAccountingSweeper(fetcher batchaccounting.Batch
 	sweeper := batchaccounting.NewSweeper(p.store, p.pricingManager, fetcher, p, usageReporter, batchaccounting.SweeperConfig{
 		Interval:  interval,
 		ClaimedBy: claimedBy,
-		Provider:  schemas.OpenAI,
 		KVStore:   kvStore,
 		Logger:    p.logger,
 	})

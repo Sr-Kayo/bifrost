@@ -30,11 +30,11 @@ const (
 
 // BatchRequestItem represents a single request in a batch (for inline requests).
 type BatchRequestItem struct {
-	CustomID string                 `json:"custom_id"`        // User-provided unique ID for this request
-	Method   string                 `json:"method,omitempty"` // HTTP method (typically "POST")
-	URL      string                 `json:"url,omitempty"`    // Endpoint URL (e.g., "/v1/chat/completions")
-	Body     map[string]interface{} `json:"body,omitempty"`   // Request body parameters
-	Params   map[string]interface{} `json:"params,omitempty"` // Alternative to Body for Anthropic
+	CustomID string                 `json:"custom_id"` // User-provided unique ID for this request
+	Method   string                 `json:"method,omitempty"`    // HTTP method (typically "POST")
+	URL      string                 `json:"url,omitempty"`       // Endpoint URL (e.g., "/v1/chat/completions")
+	Body     map[string]interface{} `json:"body,omitempty"`      // Request body parameters
+	Params   map[string]interface{} `json:"params,omitempty"`    // Alternative to Body for Anthropic
 }
 
 // BatchRequestCounts tracks the counts of requests in different states.
@@ -46,6 +46,17 @@ type BatchRequestCounts struct {
 	Expired   int `json:"expired,omitempty"`   // Anthropic-specific
 	Canceled  int `json:"canceled,omitempty"`  // Anthropic-specific
 	Pending   int `json:"pending,omitempty"`   // Anthropic-specific
+}
+
+// IsZero reports whether no provider request counts are present.
+func (c BatchRequestCounts) IsZero() bool {
+	return c.Total == 0 &&
+		c.Completed == 0 &&
+		c.Failed == 0 &&
+		c.Succeeded == 0 &&
+		c.Expired == 0 &&
+		c.Canceled == 0 &&
+		c.Pending == 0
 }
 
 // BatchErrors represents errors encountered during batch processing.
@@ -316,6 +327,33 @@ type BatchResultItem struct {
 
 	// Error if the individual request failed
 	Error *BatchResultError `json:"error,omitempty"`
+}
+
+// Failed reports whether the result item represents a failed per-request batch result.
+func (i BatchResultItem) Failed() bool {
+	if i.Error != nil {
+		return true
+	}
+	if i.Response != nil && i.Response.StatusCode >= 400 {
+		return true
+	}
+	if i.Result != nil && i.Result.Type != "" && i.Result.Type != "succeeded" {
+		return true
+	}
+	return false
+}
+
+// BatchRequestCountsFromResults derives aggregate request counts from batch result rows.
+func BatchRequestCountsFromResults(results []BatchResultItem) BatchRequestCounts {
+	counts := BatchRequestCounts{Total: len(results)}
+	for _, item := range results {
+		if item.Failed() {
+			counts.Failed++
+			continue
+		}
+		counts.Completed++
+	}
+	return counts
 }
 
 // BatchResultResponse represents OpenAI-style result response.
