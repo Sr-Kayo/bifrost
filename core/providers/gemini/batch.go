@@ -331,7 +331,10 @@ func (provider *GeminiProvider) downloadBatchResultsFile(ctx context.Context, ke
 			return err
 		}
 
-		customID := resultLine.Key
+		customID := resultLine.CustomID
+		if customID == "" {
+			customID = resultLine.Key
+		}
 		if customID == "" {
 			customID = fmt.Sprintf("request-%d", len(results))
 		}
@@ -347,8 +350,8 @@ func (provider *GeminiProvider) downloadBatchResultsFile(ctx context.Context, ke
 			}
 		} else if resultLine.Response != nil {
 			resultItem.Response = &schemas.BatchResultResponse{
-				StatusCode: 200,
-				Body:       geminiGenerateContentToBatchResultBody(resultLine.Response),
+				StatusCode: resultLine.Response.StatusCode,
+				Body:       normalizeBatchBody(resultLine.Response.Body),
 			}
 		}
 
@@ -437,6 +440,37 @@ func geminiInlineResponseToBatchResultItem(inlineResp GeminiInlinedResponse, cus
 		}
 	}
 	return resultItem
+}
+
+// normalizeBatchBody converts camelCase usage keys (promptTokens, completionTokens,
+// totalTokens) to snake_case as expected by the batch accounting pricing code.
+func normalizeBatchBody(body map[string]interface{}) map[string]interface{} {
+	if body == nil {
+		return nil
+	}
+	out := make(map[string]interface{}, len(body))
+	for k, v := range body {
+		out[k] = v
+	}
+	if raw, ok := body["usage"]; ok {
+		if usage, ok := raw.(map[string]interface{}); ok {
+			normalized := make(map[string]interface{}, len(usage))
+			for k, v := range usage {
+				switch k {
+				case "promptTokens":
+					normalized["prompt_tokens"] = v
+				case "completionTokens":
+					normalized["completion_tokens"] = v
+				case "totalTokens":
+					normalized["total_tokens"] = v
+				default:
+					normalized[k] = v
+				}
+			}
+			out["usage"] = normalized
+		}
+	}
+	return out
 }
 
 // extractGeminiUsageMetadata extracts usage metadata (as ints) from Gemini response

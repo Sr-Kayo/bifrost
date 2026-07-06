@@ -2542,12 +2542,11 @@ func (provider *GeminiProvider) BatchCreate(ctx *schemas.BifrostContext, key sch
 				geminiRequests[i] = GeminiBatchRequestItem{
 					Request: geminiReq,
 				}
-				// Set metadata with custom_id
-				if bifrostItem.CustomID != "" {
-					geminiRequests[i].Metadata = &GeminiBatchMetadata{
-						Key: bifrostItem.CustomID,
-					}
-				}
+		if bifrostItem.CustomID != "" {
+			geminiRequests[i].Metadata = &GeminiBatchMetadata{
+				Key: bifrostItem.CustomID,
+			}
+		}
 			}
 
 			batchReq.Batch.InputConfig = GeminiBatchInputConfig{
