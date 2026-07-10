@@ -1,6 +1,6 @@
 # Bifrost GHCR Dockerfile
-# Builds from the monorepo root using a Go workspace to link local modules
-# (framework, core, plugins) that may not be published yet.
+# Builds from the monorepo root using an inline Go workspace to link local modules
+# (framework, core, plugins) that have not yet been published as versioned modules.
 #
 # Build context: repo root (.)
 # Usage: docker build -f .github/workflows/Dockerfile.ghcr -t bifrost .
@@ -20,12 +20,10 @@ RUN npm run build
 FROM golang:1.26.4-alpine3.23 AS builder
 
 WORKDIR /app
-
-# Install build dependencies
 RUN apk add --no-cache gcc musl-dev git
 
-# Copy go.work and go.mod/sum files for all modules
-COPY go.work go.work.sum* ./
+# Copy module files for all submodules
+COPY go.work* ./
 COPY core/go.mod core/go.sum ./core/
 COPY framework/go.mod framework/go.sum ./framework/
 COPY plugins/compat/go.mod plugins/compat/go.sum ./plugins/compat/
@@ -40,24 +38,30 @@ COPY plugins/telemetry/go.mod plugins/telemetry/go.sum ./plugins/telemetry/
 COPY plugins/mocker/go.mod plugins/mocker/go.sum ./plugins/mocker/
 COPY transports/go.mod transports/go.sum ./transports/
 
-# Download all dependencies
-RUN go mod download
+# Initialize Go workspace if go.work not present
+RUN if [ ! -f go.work ]; then \
+      go work init ./transports ./core ./framework \
+        ./plugins/compat ./plugins/governance ./plugins/logging \
+        ./plugins/maxim ./plugins/modelcatalogresolver ./plugins/otel \
+        ./plugins/prompts ./plugins/semanticcache ./plugins/telemetry \
+        ./plugins/mocker; \
+    fi && go mod download
 
-# Copy source code
+# Copy all source code
 COPY core/ ./core/
 COPY framework/ ./framework/
 COPY plugins/ ./plugins/
 COPY transports/ ./transports/
 COPY --from=ui-builder /app/out ./transports/bifrost-http/ui
 
-# Build with Go workspace (resolves local modules)
-WORKDIR /app/transports/bifrost-http
-RUN CGO_ENABLED=1 GOOS=linux go build \
-    -ldflags="-w -s -X main.Version=v${VERSION} -extldflags '-static'" \
+# Build with Go workspace (resolves local inter-module dependencies)
+WORKDIR /app
+RUN go build \
+    -ldflags="-w -s -X main.Version=v${VERSION}" \
     -a -trimpath \
     -tags "sqlite_static" \
     -o /app/main \
-    .
+    ./transports/bifrost-http
 
 # ========== Stage 3: Runtime ==========
 FROM alpine:3.23.4
