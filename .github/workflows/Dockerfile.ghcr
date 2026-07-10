@@ -12,7 +12,7 @@ FROM node:25-alpine3.23 AS ui-builder
 
 WORKDIR /app
 COPY ui/package.json ui/package-lock.json* ./
-RUN npm ci --omit=dev --ignore-scripts 2>/dev/null || npm install --omit=dev --ignore-scripts
+RUN npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts
 COPY ui/ ./
 RUN npm run build
 
