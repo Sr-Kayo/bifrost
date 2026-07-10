@@ -1,7 +1,5 @@
 # Bifrost GHCR Dockerfile
-# Builds from the monorepo root using an inline Go workspace to link local modules
-# (framework, core, plugins) that have not yet been published as versioned modules.
-#
+# Builds from the monorepo root using a Go workspace to link local modules.
 # Build context: repo root (.)
 # Usage: docker build -f .github/workflows/Dockerfile.ghcr -t bifrost .
 
@@ -10,11 +8,12 @@ ARG VERSION=unknown
 # ========== Stage 1: Build UI ==========
 FROM node:25-alpine3.23 AS ui-builder
 
-WORKDIR /app
+WORKDIR /app/ui
 COPY ui/package.json ui/package-lock.json* ./
 RUN npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts
 COPY ui/ ./
-RUN npm run build
+# copy-build writes to ../transports/bifrost-http/ui (relative to /app/ui)
+RUN mkdir -p ../transports/bifrost-http && npm run build
 
 # ========== Stage 2: Build Go binary ==========
 FROM golang:1.26.4-alpine3.23 AS builder
@@ -22,7 +21,7 @@ FROM golang:1.26.4-alpine3.23 AS builder
 WORKDIR /app
 RUN apk add --no-cache gcc musl-dev git
 
-# Copy module files for all submodules
+# Copy go module files
 COPY go.work* ./
 COPY core/go.mod core/go.sum ./core/
 COPY framework/go.mod framework/go.sum ./framework/
@@ -38,7 +37,7 @@ COPY plugins/telemetry/go.mod plugins/telemetry/go.sum ./plugins/telemetry/
 COPY plugins/mocker/go.mod plugins/mocker/go.sum ./plugins/mocker/
 COPY transports/go.mod transports/go.sum ./transports/
 
-# Initialize Go workspace if go.work not present
+# Initialize Go workspace (links local modules so replace directives aren't needed)
 RUN if [ ! -f go.work ]; then \
       go work init ./transports ./core ./framework \
         ./plugins/compat ./plugins/governance ./plugins/logging \
@@ -52,9 +51,10 @@ COPY core/ ./core/
 COPY framework/ ./framework/
 COPY plugins/ ./plugins/
 COPY transports/ ./transports/
-COPY --from=ui-builder /app/out ./transports/bifrost-http/ui
+# Copy pre-built UI into transports/bifrost-http/ui (expected by the Go binary)
+COPY --from=ui-builder /app/transports/bifrost-http/ui ./transports/bifrost-http/ui
 
-# Build with Go workspace (resolves local inter-module dependencies)
+# Build with Go workspace
 WORKDIR /app
 RUN go build \
     -ldflags="-w -s -X main.Version=v${VERSION}" \
