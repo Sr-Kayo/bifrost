@@ -1,0 +1,17 @@
+go 1.26.4
+
+use (
+	./transports
+	./core
+	./framework
+	./plugins/compat
+	./plugins/governance
+	./plugins/logging
+	./plugins/maxim
+	./plugins/modelcatalogresolver
+	./plugins/otel
+	./plugins/prompts
+	./plugins/semanticcache
+	./plugins/telemetry
+	./plugins/mocker
+)
